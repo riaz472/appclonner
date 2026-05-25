@@ -21,10 +21,10 @@ jobs:
           distribution: 'temurin'
 
       - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses || true
+        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Install NDK 21 (supports armeabi-v7a + x86, stable on modern runners)
-        run: sdkmanager "ndk;21.4.7075529"
+      - name: Install NDK 21.4
+        run: $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "ndk;21.4.7075529"
 
       - name: Cache Gradle packages
         uses: actions/cache@v4

@@ -1,5 +1,7 @@
 package io.virtualapp.widgets;
 
+import android.animation.Animator;
+import android.animation.ObjectAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.TypedArray;
@@ -16,10 +18,6 @@ import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.animation.AccelerateDecelerateInterpolator;
-
-import com.nineoldandroids.animation.Animator;
-import com.nineoldandroids.animation.ObjectAnimator;
-import com.nineoldandroids.view.ViewHelper;
 
 import io.virtualapp.R;
 
@@ -119,7 +117,7 @@ public class RippleButton extends AppCompatButton {
                 @Override
                 public void onAnimationEnd(Animator animator) {
                     setRadius(0);
-                    ViewHelper.setAlpha(RippleButton.this, 1);
+                    RippleButton.this.setAlpha(1f);
                     mIsAnimating = false;
                 }
 
@@ -142,7 +140,6 @@ public class RippleButton extends AppCompatButton {
             mDownX = event.getX();
             mDownY = event.getY();
 
-            // Cancel the ripple animation when moved outside
             if (mAnimationIsCancel = !mRect.contains(
                     getLeft() + (int) event.getX(),
                     getTop() + (int) event.getY())) {
@@ -179,7 +176,7 @@ public class RippleButton extends AppCompatButton {
                 @Override
                 public void onAnimationEnd(Animator animator) {
                     setRadius(0);
-                    ViewHelper.setAlpha(RippleButton.this, 1);
+                    RippleButton.this.setAlpha(1f);
                     mIsAnimating = false;
                 }
 
@@ -228,7 +225,7 @@ public class RippleButton extends AppCompatButton {
             return;
         }
 
-        canvas.save(Canvas.CLIP_SAVE_FLAG);
+        canvas.save();
 
         mPath.reset();
         mPath.addCircle(mDownX, mDownY, mRadius, Path.Direction.CW);

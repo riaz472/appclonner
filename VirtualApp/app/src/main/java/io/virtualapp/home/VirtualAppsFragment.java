@@ -214,11 +214,6 @@ public class VirtualAppsFragment extends VFragment<HomeContract.HomePresenter>
     }
 
     @Override
-    public Activity getActivity() {
-        return super.getActivity();
-    }
-
-    @Override
     public Context getContext() {
         return super.getContext();
     }

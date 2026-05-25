@@ -1,0 +1,1 @@
+- [VirtualApp Android build fixes](virtualapp-build.md) — legacy project needs NDK r16b + specific Java/Gradle fixes to compile in Replit.

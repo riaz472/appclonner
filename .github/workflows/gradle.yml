@@ -6,9 +6,9 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Hum purana OS use karenge taake compatibility issues na hon
+    runs-on: ubuntu-20.04
     env:
-      # NDK error ko khatam karne ke liye ye variable unset karenge
       ANDROID_NDK_HOME: ""
     steps:
     - uses: actions/checkout@v4
@@ -19,13 +19,13 @@ jobs:
         java-version: '8'
         distribution: 'temurin'
 
-    - name: Grant execute permission for gradlew
+    - name: Grant execute permission
       run: chmod +x VirtualApp/gradlew
 
-    - name: Build with Gradle
-      # --no-daemon flag build ko stable banata hai
-      run: cd VirtualApp && ./gradlew assembleDebug --no-daemon
-
+    - name: Clean Build
+      # --stacktrace lagane se agar error aaya, toh wo saaf batayega
+      run: cd VirtualApp && ./gradlew clean assembleDebug --stacktrace
+      
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:

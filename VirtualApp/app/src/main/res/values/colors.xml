@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- DevicePro Core Palette -->
+    <color name="colorPrimary">#1A1D2E</color>
+    <color name="colorPrimaryDark">#12141F</color>
+    <color name="colorPrimaryRavel">#1A1D2E</color>
+    <color name="colorAccent">#4F8EF7</color>
+
+    <!-- Backgrounds & Surfaces -->
+    <color name="colorBackground">#12141F</color>
+    <color name="colorSurface">#1E2235</color>
+
+    <!-- Text -->
+    <color name="colorOnSurface">#E8EAFF</color>
+    <color name="mainTextColor">#E8EAFF</color>
+    <color name="colorSubtleText">#7B82A8</color>
+
+    <!-- Highlights -->
+    <color name="colorElectricBlue">#4F8EF7</color>
+    <color name="colorCyanTeal">#00D4C8</color>
+    <color name="colorWarning">#FFB74D</color>
+    <color name="colorError">#FF5370</color>
+
+    <!-- Desktop grid cell backgrounds (mapped to surface palette) -->
+    <color name="desktopColorA">#1E2235</color>
+    <color name="desktopColorB">#21263A</color>
+    <color name="desktopColorC">#232840</color>
+    <color name="desktopColorD">#1A1D2E</color>
+
+    <!-- Legacy accent colors (retained for existing widgets) -->
+    <color name="holo_blue_dark">#4F8EF7</color>
+    <color name="holo_yellow_dark">#FFB74D</color>
+    <color name="holo_green_dark">#00D4C8</color>
+    <color name="holo_purple_dark">#7B82A8</color>
+    <color name="holo_red_dark">#FF5370</color>
+
+    <integer-array name="progress_colors">
+        <item>@color/holo_blue_dark</item>
+        <item>@color/holo_yellow_dark</item>
+        <item>@color/holo_green_dark</item>
+        <item>@color/holo_purple_dark</item>
+        <item>@color/holo_red_dark</item>
+    </integer-array>
+
+    <!-- Utility -->
+    <color name="transparent">#00000000</color>
+    <color name="black_20_transparent">#55000000</color>
+    <color name="md_transparent">#00FFFFFF</color>
+
+</resources>

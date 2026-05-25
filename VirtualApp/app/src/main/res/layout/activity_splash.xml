@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<android.support.constraint.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/colorBackground"
+    tools:context=".splash.SplashActivity">
+
+    <!-- Icon container: circular surface card with monogram -->
+    <FrameLayout
+        android:id="@+id/splash_icon_container"
+        android:layout_width="96dp"
+        android:layout_height="96dp"
+        android:background="@drawable/splash_icon_bg"
+        app:layout_constraintBottom_toTopOf="@+id/splash_app_name"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_chainStyle="packed"
+        app:layout_constraintVertical_bias="0.42">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:fontFamily="sans-serif-black"
+            android:text="D"
+            android:textColor="@color/colorAccent"
+            android:textSize="42sp"
+            android:textStyle="bold" />
+    </FrameLayout>
+
+    <!-- App name -->
+    <TextView
+        android:id="@+id/splash_app_name"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="0.08"
+        android:text="@string/app_name"
+        android:textColor="@color/colorOnSurface"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/splash_icon_container" />
+
+    <!-- Tagline -->
+    <TextView
+        android:id="@+id/splash_tagline"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:fontFamily="sans-serif"
+        android:letterSpacing="0.04"
+        android:text="Your Device. Your Control."
+        android:textColor="@color/colorSubtleText"
+        android:textSize="13sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/splash_app_name" />
+
+    <!-- Bottom: initializing label -->
+    <TextView
+        android:id="@+id/splash_status_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:fontFamily="sans-serif"
+        android:text="Initializing engine…"
+        android:textColor="@color/colorSubtleText"
+        android:textSize="12sp"
+        app:layout_constraintBottom_toTopOf="@+id/splash_progress"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- Bottom: indeterminate progress bar -->
+    <ProgressBar
+        android:id="@+id/splash_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="160dp"
+        android:layout_height="2dp"
+        android:layout_marginBottom="48dp"
+        android:indeterminate="true"
+        android:indeterminateTint="@color/colorAccent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+</android.support.constraint.ConstraintLayout>

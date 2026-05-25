@@ -1,0 +1,34 @@
+<resources>
+    <string name="app_name">DevicePro</string>
+    <string name="wait">Please wait…</string>
+    <string name="desktop">Desktop</string>
+    <string name="add_app">Add App</string>
+    <string name="preparing">Opening the app…</string>
+    <string name="delete">Delete</string>
+    <string name="create_shortcut">Create shortcut</string>
+    <string name="new_user">New User</string>
+    <string name="enable">Enable</string>
+    <string name="save">Save</string>
+    <string name="save_success">Save success!</string>
+    <string name="manufacturer">Manufacturer</string>
+    <string name="brand">Brand</string>
+    <string name="device">Device</string>
+    <string name="fake_device_info">Fake Device Info</string>
+    <string name="wifi_status">Wifi Status</string>
+    <string name="config_device_info">Device Info</string>
+    <string name="about">About</string>
+    <string name="clone_apps">Clone Apps</string>
+    <string name="external_storage">External Storage</string>
+    <string name="install_d">Install (%d)</string>
+    <string name="install_too_much_once_time">No more then 9 apps can be chosen at a time!</string>
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_virtual_apps">Virtual Apps</string>
+
+    <!-- ======================================================
+         AdMob IDs — TEST IDs active. Replace all three with
+         your live AdMob IDs from the AdMob console before release.
+         ====================================================== -->
+    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>
+    <string name="admob_banner_id">ca-app-pub-3940256099942544/6300978111</string>
+    <string name="admob_interstitial_id">ca-app-pub-3940256099942544/1033173712</string>
+</resources>

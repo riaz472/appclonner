@@ -664,97 +664,152 @@ public class VAppManagerService implements IAppManager {
             }
         }
 
-        // Stage 2: Resolve package name via public API (runs in system_server, not our process)
+        // Stage 2: Resolve package name via getPackageArchiveInfo (works when APK is readable)
         String detectedPkg = null;
         try {
             android.content.pm.PackageInfo ai = pm.getPackageArchiveInfo(path, 0);
-            if (ai != null) detectedPkg = ai.packageName;
+            if (ai != null && ai.packageName != null) {
+                detectedPkg = ai.packageName;
+                VLog.d(TAG, "tryFallbackParse: Stage2 archiveInfo pkg=" + detectedPkg);
+            }
         } catch (Throwable ignored) {}
 
-        // Stage 3: Extract package name from directory naming convention
-        //          /data/app/com.example-XXXXXX==/base.apk  →  com.example
-        // Use indexOf (not lastIndexOf) because package names never contain dashes,
-        // so the FIRST dash is always the separator. URL-safe Base64 hashes CAN
-        // contain dashes, so lastIndexOf would pick the wrong position.
+        // Stage 2.5: Scan ALL installed packages and match by APK source path.
+        // This is the most reliable method — no hidden APIs, no path format assumptions,
+        // works on Android 10 through 16+. Requires QUERY_ALL_PACKAGES (already declared).
+        if (detectedPkg == null) {
+            try {
+                java.util.List<android.content.pm.PackageInfo> all =
+                        pm.getInstalledPackages(0);
+                for (android.content.pm.PackageInfo pi : all) {
+                    if (pi.applicationInfo == null) continue;
+                    String sd  = pi.applicationInfo.sourceDir;
+                    String psd = pi.applicationInfo.publicSourceDir;
+                    if ((sd  != null && sd.equals(path))
+                     || (psd != null && psd.equals(path))) {
+                        detectedPkg = pi.packageName;
+                        VLog.d(TAG, "tryFallbackParse: Stage2.5 pathScan pkg=" + detectedPkg);
+                        break;
+                    }
+                    // Also match by parent directory (handles split-APK sub-paths)
+                    String apkParent = parentDir != null ? parentDir.getAbsolutePath() : null;
+                    if (apkParent != null) {
+                        if ((sd  != null && sd.startsWith(apkParent))
+                         || (psd != null && psd.startsWith(apkParent))) {
+                            detectedPkg = pi.packageName;
+                            VLog.d(TAG, "tryFallbackParse: Stage2.5 parentScan pkg=" + detectedPkg);
+                            break;
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        // Stage 3: Extract package name from Android 10+ directory naming convention.
+        //   /data/app/~~SALT==/com.example.pkg-BASE64HASH==/base.apk  →  com.example.pkg
+        // Use indexOf (not lastIndexOf): package names never contain dashes, so the FIRST
+        // dash is always the separator; the Base64 hash CAN contain additional dashes.
         if (detectedPkg == null && parentDir != null) {
             String dirName = parentDir.getName();
             int dashIdx = dirName.indexOf('-');
-            if (dashIdx > 0 && dirName.contains(".")) {
+            if (dashIdx > 0) {
                 String candidate = dirName.substring(0, dashIdx);
                 if (candidate.contains(".")) {
                     try {
                         pm.getApplicationInfo(candidate, 0);
                         detectedPkg = candidate;
-                        VLog.d(TAG, "tryFallbackParse: extracted pkg from path: " + detectedPkg);
+                        VLog.d(TAG, "tryFallbackParse: Stage3 dirParse pkg=" + detectedPkg);
                     } catch (Throwable ignored) {}
                 }
             }
         }
 
         if (detectedPkg == null) {
-            VLog.w(TAG, "tryFallbackParse: cannot determine package name for " + path);
+            VLog.w(TAG, "tryFallbackParse: all detection stages failed for path=" + path);
             return null;
         }
 
-        // Stage 4: Use system ApplicationInfo to find the real APK directory
-        android.content.pm.ApplicationInfo sysAi;
+        // Stage 4: Try PackageParser on the system APK directory (works on Android < 14)
+        android.content.pm.ApplicationInfo sysAi = null;
         try {
             sysAi = pm.getApplicationInfo(detectedPkg, 0);
         } catch (Throwable e) {
-            VLog.w(TAG, "tryFallbackParse: pkg not on system: " + detectedPkg);
-            return null;
+            VLog.w(TAG, "tryFallbackParse: getApplicationInfo failed for " + detectedPkg);
         }
 
-        boolean isSplit = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
-                && sysAi.splitSourceDirs != null && sysAi.splitSourceDirs.length > 0;
-        VLog.w(TAG, "tryFallbackParse: pkg=" + detectedPkg + " isSplit=" + isSplit
-                + " sourceDir=" + sysAi.sourceDir);
+        if (sysAi != null) {
+            boolean isSplit = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
+                    && sysAi.splitSourceDirs != null && sysAi.splitSourceDirs.length > 0;
+            VLog.w(TAG, "tryFallbackParse: pkg=" + detectedPkg + " isSplit=" + isSplit
+                    + " sourceDir=" + sysAi.sourceDir);
 
-        File sysDir = new File(sysAi.sourceDir).getParentFile();
-        if (sysDir != null && sysDir.isDirectory()) {
-            try {
-                VPackage p = PackageParserEx.parsePackage(sysDir);
-                if (p != null && p.packageName != null) {
-                    VLog.d(TAG, "tryFallbackParse: system dir parse succeeded: " + p.packageName);
-                    return p;
+            File sysDir = new File(sysAi.sourceDir).getParentFile();
+            if (sysDir != null && sysDir.isDirectory()) {
+                try {
+                    VPackage p = PackageParserEx.parsePackage(sysDir);
+                    if (p != null && p.packageName != null) {
+                        VLog.d(TAG, "tryFallbackParse: Stage4 sysDir succeeded: " + p.packageName);
+                        return p;
+                    }
+                } catch (Throwable e) {
+                    VLog.w(TAG, "tryFallbackParse: Stage4 sysDir failed: " + e.getMessage());
                 }
-            } catch (Throwable e) {
-                VLog.w(TAG, "tryFallbackParse: system dir parse failed: " + e.getMessage());
+            }
+
+            File sysBase = new File(sysAi.sourceDir);
+            if (sysBase.exists() && !sysBase.getAbsolutePath().equals(path)) {
+                try {
+                    VPackage p = PackageParserEx.parsePackage(sysBase);
+                    if (p != null && p.packageName != null) {
+                        VLog.d(TAG, "tryFallbackParse: Stage4 sysBase succeeded: " + p.packageName);
+                        return p;
+                    }
+                } catch (Throwable e) {
+                    VLog.w(TAG, "tryFallbackParse: Stage4 sysBase failed: " + e.getMessage());
+                }
             }
         }
 
-        File sysBase = new File(sysAi.sourceDir);
-        if (sysBase.exists() && !sysBase.getAbsolutePath().equals(path)) {
-            try {
-                VPackage p = PackageParserEx.parsePackage(sysBase);
-                if (p != null && p.packageName != null) {
-                    VLog.d(TAG, "tryFallbackParse: system base.apk parse succeeded: " + p.packageName);
-                    return p;
-                }
-            } catch (Throwable e) {
-                VLog.w(TAG, "tryFallbackParse: system base.apk parse failed: " + e.getMessage());
-            }
-        }
-
-        // Stage 5 (final): build full VPackage from public PackageInfo via Parcel constructors.
-        // This bypasses PackageParser entirely — no hidden API needed.
-        VLog.w(TAG, "tryFallbackParse: PackageParser exhausted, building from system PM");
+        // Stage 5 (final): build full VPackage from public PackageManager APIs only.
+        // No PackageParser, no hidden APIs — works on all Android versions.
+        VLog.w(TAG, "tryFallbackParse: Stage5 building from system PM for " + detectedPkg);
         return buildMinimalVPackageFromSystemPM(detectedPkg, pm);
     }
 
     private VPackage buildMinimalVPackageFromSystemPM(String packageName,
             android.content.pm.PackageManager pm) {
-        try {
-            int piFlags = android.content.pm.PackageManager.GET_ACTIVITIES
-                    | android.content.pm.PackageManager.GET_SERVICES
-                    | android.content.pm.PackageManager.GET_RECEIVERS
-                    | android.content.pm.PackageManager.GET_PROVIDERS
-                    | android.content.pm.PackageManager.GET_META_DATA;
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
-                piFlags |= android.content.pm.PackageManager.GET_SIGNATURES;
-            }
-            android.content.pm.PackageInfo sysInfo = pm.getPackageInfo(packageName, piFlags);
 
+        // Try progressively simpler flag sets so one unsupported flag can't kill everything.
+        int baseFlags = android.content.pm.PackageManager.GET_ACTIVITIES
+                | android.content.pm.PackageManager.GET_SERVICES
+                | android.content.pm.PackageManager.GET_RECEIVERS
+                | android.content.pm.PackageManager.GET_PROVIDERS
+                | android.content.pm.PackageManager.GET_META_DATA;
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            baseFlags |= android.content.pm.PackageManager.GET_SIGNATURES;
+        }
+        int[] flagSets = {
+            baseFlags,
+            android.content.pm.PackageManager.GET_ACTIVITIES
+                | android.content.pm.PackageManager.GET_SERVICES
+                | android.content.pm.PackageManager.GET_RECEIVERS
+                | android.content.pm.PackageManager.GET_PROVIDERS,
+            0
+        };
+
+        android.content.pm.PackageInfo sysInfo = null;
+        for (int flags : flagSets) {
+            try {
+                sysInfo = pm.getPackageInfo(packageName, flags);
+                if (sysInfo != null) break;
+            } catch (Throwable ignored) {}
+        }
+        if (sysInfo == null) {
+            VLog.e(TAG, "buildMinimalVPackageFromSystemPM: getPackageInfo returned null for " + packageName);
+            return null;
+        }
+
+        try {
             VPackage pkg = new VPackage();
             pkg.packageName = sysInfo.packageName;
             pkg.mVersionCode = sysInfo.versionCode;
@@ -771,11 +826,11 @@ public class VAppManagerService implements IAppManager {
                     pkg.requestedPermissions.add(perm);
                 }
             }
-            pkg.activities = new ArrayList<>();
-            pkg.receivers = new ArrayList<>();
-            pkg.services = new ArrayList<>();
-            pkg.providers = new ArrayList<>();
-            pkg.permissions = new ArrayList<>();
+            pkg.activities      = new ArrayList<>();
+            pkg.receivers       = new ArrayList<>();
+            pkg.services        = new ArrayList<>();
+            pkg.providers       = new ArrayList<>();
+            pkg.permissions     = new ArrayList<>();
             pkg.permissionGroups = new ArrayList<>();
             pkg.instrumentation = new ArrayList<>();
             pkg.protectedBroadcasts = new ArrayList<>();
@@ -783,28 +838,28 @@ public class VAppManagerService implements IAppManager {
             if (sysInfo.activities != null) {
                 for (android.content.pm.ActivityInfo ai : sysInfo.activities) {
                     VPackage.ActivityComponent c = buildActivityComponent(ai);
-                    if (c != null) pkg.activities.add(c);
+                    if (c != null) { c.owner = pkg; pkg.activities.add(c); }
                 }
             }
             if (sysInfo.receivers != null) {
                 for (android.content.pm.ActivityInfo ai : sysInfo.receivers) {
                     VPackage.ActivityComponent c = buildActivityComponent(ai);
-                    if (c != null) pkg.receivers.add(c);
+                    if (c != null) { c.owner = pkg; pkg.receivers.add(c); }
                 }
             }
             if (sysInfo.services != null) {
                 for (android.content.pm.ServiceInfo si : sysInfo.services) {
                     VPackage.ServiceComponent c = buildServiceComponent(si);
-                    if (c != null) pkg.services.add(c);
+                    if (c != null) { c.owner = pkg; pkg.services.add(c); }
                 }
             }
             if (sysInfo.providers != null) {
                 for (android.content.pm.ProviderInfo pi : sysInfo.providers) {
                     VPackage.ProviderComponent c = buildProviderComponent(pi);
-                    if (c != null) pkg.providers.add(c);
+                    if (c != null) { c.owner = pkg; pkg.providers.add(c); }
                 }
             }
-            VLog.d(TAG, "buildMinimalVPackageFromSystemPM: " + pkg.packageName
+            VLog.d(TAG, "buildMinimalVPackageFromSystemPM OK: " + pkg.packageName
                     + " acts=" + pkg.activities.size()
                     + " svcs=" + pkg.services.size()
                     + " rcvs=" + pkg.receivers.size()
@@ -816,67 +871,97 @@ public class VAppManagerService implements IAppManager {
         }
     }
 
-    // Parcel-trick builders: VPackage component Parcel constructors read:
-    //   readParcelable(info), readString(className), readBundle(metaData), readInt(N intents)
-    // We write exactly that layout and invoke the protected constructor via reflection.
+    // Component builders: allocate instances without calling any constructor, then set
+    // fields directly via reflection. Unsafe is accessed purely by name so there is no
+    // compile-time dependency on sun.misc (which is absent from the Android SDK jar).
+
+    private static Object  sUnsafe;
+    private static java.lang.reflect.Method sAllocateInstance;
+    static {
+        try {
+            Class<?> uc = Class.forName("sun.misc.Unsafe");
+            java.lang.reflect.Field f = uc.getDeclaredField("theUnsafe");
+            f.setAccessible(true);
+            sUnsafe = f.get(null);
+            sAllocateInstance = uc.getMethod("allocateInstance", Class.class);
+        } catch (Throwable t) {
+            sUnsafe = null;
+            sAllocateInstance = null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T extends VPackage.Component<?>> T allocateComponent(Class<T> cls) {
+        if (sUnsafe != null && sAllocateInstance != null) {
+            try {
+                return (T) sAllocateInstance.invoke(sUnsafe, cls);
+            } catch (Throwable ignored) {}
+        }
+        // Fallback: invoke the protected Parcel constructor with a minimal empty Parcel.
+        // Write exactly what Component(Parcel) reads:
+        //   readParcelable → null (-1), readString → null (-1),
+        //   readBundle → null (-1),    readInt → 0
+        try {
+            Parcel p = Parcel.obtain();
+            try {
+                p.writeInt(-1);
+                p.writeInt(-1);
+                p.writeInt(-1);
+                p.writeInt(0);
+                p.setDataPosition(0);
+                java.lang.reflect.Constructor<T> ctor =
+                        cls.getDeclaredConstructor(Parcel.class);
+                ctor.setAccessible(true);
+                return ctor.newInstance(p);
+            } finally {
+                p.recycle();
+            }
+        } catch (Throwable ignored2) {}
+        return null;
+    }
 
     private static VPackage.ActivityComponent buildActivityComponent(
             android.content.pm.ActivityInfo info) {
-        Parcel p = Parcel.obtain();
         try {
-            p.writeParcelable(info, 0);
-            p.writeString(info.name);
-            p.writeBundle(info.metaData);
-            p.writeInt(0);
-            p.setDataPosition(0);
-            java.lang.reflect.Constructor<VPackage.ActivityComponent> ctor =
-                    VPackage.ActivityComponent.class.getDeclaredConstructor(Parcel.class);
-            ctor.setAccessible(true);
-            return ctor.newInstance(p);
+            VPackage.ActivityComponent c = allocateComponent(VPackage.ActivityComponent.class);
+            if (c == null) return null;
+            c.info      = info;
+            c.className = info.name;
+            c.metaData  = info.metaData;
+            c.intents   = new ArrayList<>();
+            return c;
         } catch (Throwable e) {
             return null;
-        } finally {
-            p.recycle();
         }
     }
 
     private static VPackage.ServiceComponent buildServiceComponent(
             android.content.pm.ServiceInfo info) {
-        Parcel p = Parcel.obtain();
         try {
-            p.writeParcelable(info, 0);
-            p.writeString(info.name);
-            p.writeBundle(info.metaData);
-            p.writeInt(0);
-            p.setDataPosition(0);
-            java.lang.reflect.Constructor<VPackage.ServiceComponent> ctor =
-                    VPackage.ServiceComponent.class.getDeclaredConstructor(Parcel.class);
-            ctor.setAccessible(true);
-            return ctor.newInstance(p);
+            VPackage.ServiceComponent c = allocateComponent(VPackage.ServiceComponent.class);
+            if (c == null) return null;
+            c.info      = info;
+            c.className = info.name;
+            c.metaData  = info.metaData;
+            c.intents   = new ArrayList<>();
+            return c;
         } catch (Throwable e) {
             return null;
-        } finally {
-            p.recycle();
         }
     }
 
     private static VPackage.ProviderComponent buildProviderComponent(
             android.content.pm.ProviderInfo info) {
-        Parcel p = Parcel.obtain();
         try {
-            p.writeParcelable(info, 0);
-            p.writeString(info.name);
-            p.writeBundle(info.metaData);
-            p.writeInt(0);
-            p.setDataPosition(0);
-            java.lang.reflect.Constructor<VPackage.ProviderComponent> ctor =
-                    VPackage.ProviderComponent.class.getDeclaredConstructor(Parcel.class);
-            ctor.setAccessible(true);
-            return ctor.newInstance(p);
+            VPackage.ProviderComponent c = allocateComponent(VPackage.ProviderComponent.class);
+            if (c == null) return null;
+            c.info      = info;
+            c.className = info.name;
+            c.metaData  = info.metaData;
+            c.intents   = new ArrayList<>();
+            return c;
         } catch (Throwable e) {
             return null;
-        } finally {
-            p.recycle();
         }
     }
 }

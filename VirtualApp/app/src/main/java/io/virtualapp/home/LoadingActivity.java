@@ -39,6 +39,16 @@ public class LoadingActivity extends VActivity {
     private EatBeansView loadingView;
 
     public static void launch(Context context, String packageName, int userId) {
+        if (!VirtualCore.get().isStartup() || VActivityManager.get().getService() == null) {
+            new Handler(Looper.getMainLooper()).post(() ->
+                Toast.makeText(
+                    context,
+                    "Engine initializing, please wait...",
+                    Toast.LENGTH_LONG
+                ).show()
+            );
+            return;
+        }
         Intent intent = VirtualCore.get().getLaunchIntent(packageName, userId);
         if (intent != null) {
             Intent loadingPageIntent = new Intent(context, LoadingActivity.class);

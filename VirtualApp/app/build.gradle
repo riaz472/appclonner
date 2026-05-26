@@ -38,6 +38,13 @@ android {
         checkReleaseBuilds false
         abortOnError false
     }
+
+    packagingOptions {
+        exclude 'META-INF/LICENSE'
+        exclude 'META-INF/NOTICE'
+        pickFirst 'lib/armeabi-v7a/libva++.so'
+        pickFirst 'lib/x86/libva++.so'
+    }
 }
 
 dependencies {

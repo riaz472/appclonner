@@ -3,6 +3,11 @@
           package="io.virtualapp">
 
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Android 11+: enumerate installed packages for the app cloner -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
+    <!-- Install cloned APKs from within the app -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+
     <application
         android:name=".VApp"
         android:allowBackup="true"
@@ -18,8 +23,10 @@
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="@string/admob_app_id" />
 
+        <!-- android:exported required for API 31+ (Android 12) -->
         <activity
             android:name=".splash.SplashActivity"
+            android:exported="true"
             android:screenOrientation="portrait"
             android:theme="@style/AppTheme">
             <intent-filter>
@@ -30,33 +37,36 @@
 
         <activity
             android:name=".home.HomeActivity"
+            android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/UITheme"/>
 
         <activity
             android:name=".home.ListAppActivity"
+            android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/UITheme"/>
 
         <activity
             android:name=".home.LoadingActivity"
             android:excludeFromRecents="true"
+            android:exported="false"
             android:noHistory="true"
             android:screenOrientation="portrait"
             android:taskAffinity="va.task.loading"
             android:theme="@style/TransparentTheme"/>
+
         <activity
             android:name=".home.location.VirtualLocationSettings"
+            android:exported="false"
             android:screenOrientation="portrait"
-            android:theme="@style/UITheme"
-            />
+            android:theme="@style/UITheme"/>
 
         <activity
             android:name=".home.location.MarkerActivity"
+            android:exported="false"
             android:screenOrientation="portrait"
-            android:theme="@style/UITheme"
-            />
+            android:theme="@style/UITheme"/>
     </application>
-
 
 </manifest>

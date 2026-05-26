@@ -14,6 +14,7 @@ import android.content.pm.ServiceInfo;
 import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.ConditionVariable;
 import android.os.IBinder;
@@ -211,9 +212,18 @@ public final class VirtualCore {
     }
 
     public boolean isEngineLaunched() {
+        // On Android 11+ (API 30), getRunningAppProcesses() only returns the calling
+        // app's own process due to package-visibility restrictions. We fall back to
+        // returning false so the caller always invokes waitForEngine(), which is safe
+        // and idempotent (it simply pings the server ContentProvider).
+        if (Build.VERSION.SDK_INT >= 30) {
+            return false;
+        }
         String engineProcessName = getEngineProcessName();
         ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
-        for (ActivityManager.RunningAppProcessInfo info : am.getRunningAppProcesses()) {
+        List<ActivityManager.RunningAppProcessInfo> processes = am.getRunningAppProcesses();
+        if (processes == null) return false;
+        for (ActivityManager.RunningAppProcessInfo info : processes) {
             if (info.processName.endsWith(engineProcessName)) {
                 return true;
             }

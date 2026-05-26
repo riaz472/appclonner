@@ -1,1 +1,5 @@
 - [VirtualApp Android build fixes](virtualapp-build.md) — legacy project needs NDK r16b + specific Java/Gradle fixes to compile in Replit.
+- [Hidden API bypass pattern](hidden-api-bypass.md) — JNI via VMRuntime.setHiddenApiExemptions beats Java reflection; must run before VirtualCore.startup() in all processes.
+- [Android 11+ isEngineLaunched fix](engine-launched-android11.md) — getRunningAppProcesses() returns only calling process on API 30+; return false to force waitForEngine() call.
+- [compileSdk 28 manifest attribute limit](manifest-sdk28-attrs.md) — requestLegacyExternalStorage requires compileSdk 29+; drop it when building against SDK 28.
+- [VirtualCore missing Build import](virtualcore-build-import.md) — android.os.Build not pulled in transitively; must be explicitly imported in VirtualCore.java.

@@ -8,8 +8,10 @@ workflows:
     triggering:
       events:
         - push
-      branch_filters:
-        - target: main
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
     scripts:
       - name: Set up local.properties
         script: |

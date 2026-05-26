@@ -38,15 +38,24 @@ public class LoadingActivity extends VActivity {
     private PackageAppData appModel;
     private EatBeansView loadingView;
 
+    private static final int RETRY_INTERVAL_MS = 500;
+    private static final int MAX_RETRIES       = 20;
+
     public static void launch(Context context, String packageName, int userId) {
+        launchWithRetry(context, packageName, userId, 0);
+    }
+
+    private static void launchWithRetry(Context context, String packageName, int userId, int attempt) {
         if (!VirtualCore.get().isStartup() || VActivityManager.get().getService() == null) {
-            new Handler(Looper.getMainLooper()).post(() ->
-                Toast.makeText(
-                    context,
-                    "Engine initializing, please wait...",
-                    Toast.LENGTH_LONG
-                ).show()
-            );
+            if (attempt < MAX_RETRIES) {
+                Log.d(TAG, "Engine not ready, retry " + (attempt + 1) + "/" + MAX_RETRIES);
+                new Handler(Looper.getMainLooper()).postDelayed(
+                        () -> launchWithRetry(context, packageName, userId, attempt + 1),
+                        RETRY_INTERVAL_MS
+                );
+            } else {
+                Log.e(TAG, "Engine failed to start after " + MAX_RETRIES + " attempts, giving up.");
+            }
             return;
         }
         Intent intent = VirtualCore.get().getLaunchIntent(packageName, userId);

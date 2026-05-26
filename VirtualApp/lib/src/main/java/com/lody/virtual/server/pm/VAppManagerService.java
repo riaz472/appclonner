@@ -847,66 +847,97 @@ public class VAppManagerService implements IAppManager {
             return null;
         }
 
+        VPackage pkg = new VPackage();
         try {
-            VPackage pkg = new VPackage();
-            pkg.packageName = sysInfo.packageName;
+            pkg.packageName  = sysInfo.packageName != null ? sysInfo.packageName : packageName;
             pkg.mVersionCode = sysInfo.versionCode;
             pkg.mVersionName = sysInfo.versionName;
             pkg.applicationInfo = sysInfo.applicationInfo;
+        } catch (Throwable e) {
+            VLog.w(TAG, "buildMinimalVPackageFromSystemPM: error reading basic metadata for " + packageName, e);
+            pkg.packageName = packageName;
+        }
+
+        pkg.activities       = new ArrayList<>();
+        pkg.receivers        = new ArrayList<>();
+        pkg.services         = new ArrayList<>();
+        pkg.providers        = new ArrayList<>();
+        pkg.permissions      = new ArrayList<>();
+        pkg.permissionGroups = new ArrayList<>();
+        pkg.instrumentation  = new ArrayList<>();
+        pkg.protectedBroadcasts = new ArrayList<>();
+        pkg.requestedPermissions = new ArrayList<>();
+
+        try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && sysInfo.signingInfo != null) {
                 pkg.mSignatures = sysInfo.signingInfo.getApkContentsSigners();
             } else {
                 pkg.mSignatures = sysInfo.signatures;
             }
-            pkg.requestedPermissions = new ArrayList<>();
+        } catch (Throwable e) {
+            VLog.w(TAG, "buildMinimalVPackageFromSystemPM: could not read signatures for " + packageName);
+        }
+
+        try {
             if (sysInfo.requestedPermissions != null) {
                 for (String perm : sysInfo.requestedPermissions) {
                     pkg.requestedPermissions.add(perm);
                 }
             }
-            pkg.activities      = new ArrayList<>();
-            pkg.receivers       = new ArrayList<>();
-            pkg.services        = new ArrayList<>();
-            pkg.providers       = new ArrayList<>();
-            pkg.permissions     = new ArrayList<>();
-            pkg.permissionGroups = new ArrayList<>();
-            pkg.instrumentation = new ArrayList<>();
-            pkg.protectedBroadcasts = new ArrayList<>();
+        } catch (Throwable e) {
+            VLog.w(TAG, "buildMinimalVPackageFromSystemPM: could not read requestedPermissions for " + packageName);
+        }
 
+        try {
             if (sysInfo.activities != null) {
                 for (android.content.pm.ActivityInfo ai : sysInfo.activities) {
                     VPackage.ActivityComponent c = buildActivityComponent(ai);
                     if (c != null) { c.owner = pkg; pkg.activities.add(c); }
                 }
             }
+        } catch (Throwable e) {
+            VLog.w(TAG, "buildMinimalVPackageFromSystemPM: could not read activities for " + packageName);
+        }
+
+        try {
             if (sysInfo.receivers != null) {
                 for (android.content.pm.ActivityInfo ai : sysInfo.receivers) {
                     VPackage.ActivityComponent c = buildActivityComponent(ai);
                     if (c != null) { c.owner = pkg; pkg.receivers.add(c); }
                 }
             }
+        } catch (Throwable e) {
+            VLog.w(TAG, "buildMinimalVPackageFromSystemPM: could not read receivers for " + packageName);
+        }
+
+        try {
             if (sysInfo.services != null) {
                 for (android.content.pm.ServiceInfo si : sysInfo.services) {
                     VPackage.ServiceComponent c = buildServiceComponent(si);
                     if (c != null) { c.owner = pkg; pkg.services.add(c); }
                 }
             }
+        } catch (Throwable e) {
+            VLog.w(TAG, "buildMinimalVPackageFromSystemPM: could not read services for " + packageName);
+        }
+
+        try {
             if (sysInfo.providers != null) {
                 for (android.content.pm.ProviderInfo pi : sysInfo.providers) {
                     VPackage.ProviderComponent c = buildProviderComponent(pi);
                     if (c != null) { c.owner = pkg; pkg.providers.add(c); }
                 }
             }
-            VLog.d(TAG, "buildMinimalVPackageFromSystemPM OK: " + pkg.packageName
-                    + " acts=" + pkg.activities.size()
-                    + " svcs=" + pkg.services.size()
-                    + " rcvs=" + pkg.receivers.size()
-                    + " prvs=" + pkg.providers.size());
-            return pkg;
         } catch (Throwable e) {
-            VLog.e(TAG, "buildMinimalVPackageFromSystemPM FAILED for " + packageName, e);
-            return null;
+            VLog.w(TAG, "buildMinimalVPackageFromSystemPM: could not read providers for " + packageName);
         }
+
+        VLog.d(TAG, "buildMinimalVPackageFromSystemPM OK: " + pkg.packageName
+                + " acts=" + pkg.activities.size()
+                + " svcs=" + pkg.services.size()
+                + " rcvs=" + pkg.receivers.size()
+                + " prvs=" + pkg.providers.size());
+        return pkg;
     }
 
     // Component builders: allocate instances without calling any constructor, then set

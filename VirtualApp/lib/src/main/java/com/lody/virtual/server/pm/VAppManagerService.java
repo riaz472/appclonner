@@ -175,15 +175,19 @@ public class VAppManagerService implements IAppManager {
         // Uses only public PackageManager APIs for detection; builds full VPackage
         // from PackageInfo via Parcel constructors as a last resort.
         if (pkg == null || pkg.packageName == null) {
-            VPackage fallback = tryFallbackParse(packageFile, path);
+            // diagStage tracks the last-active detection stage so the failure
+            // message shown on screen tells us exactly where things broke.
+            String[] diagStage = {"S0:InitialParse-Failed"};
+            VPackage fallback = tryFallbackParse(packageFile, path, diagStage);
             if (fallback != null && fallback.packageName != null) {
                 pkg = fallback;
                 isSplitApk = true;
+            } else {
+                VLog.e(TAG, "installPackage FAILED: all parse strategies exhausted"
+                        + " | stage=" + diagStage[0] + " | path=" + path);
+                return InstallResult.makeFailure(
+                        "Parse failed [" + diagStage[0] + "]");
             }
-        }
-        if (pkg == null || pkg.packageName == null) {
-            VLog.e(TAG, "installPackage FAILED: all parse strategies exhausted for " + path);
-            return InstallResult.makeFailure("Unable to parse the package.");
         }
         InstallResult res = new InstallResult();
         res.packageName = pkg.packageName;
@@ -639,11 +643,12 @@ public class VAppManagerService implements IAppManager {
         }
     }
 
-    private VPackage tryFallbackParse(File packageFile, String path) {
+    private VPackage tryFallbackParse(File packageFile, String path, String[] diagStage) {
         android.content.pm.PackageManager pm =
                 VirtualCore.get().getContext().getPackageManager();
 
         // Stage 1: listFiles() may work on some devices — quick split detection
+        diagStage[0] = "S1:SplitDetect";
         File parentDir = packageFile.getParentFile();
         if (parentDir != null && parentDir.isDirectory()) {
             File[] dirContents = parentDir.listFiles();
@@ -659,13 +664,18 @@ public class VAppManagerService implements IAppManager {
                     VLog.w(TAG, "tryFallbackParse: listFiles detected splits, parsing dir: " + parentDir);
                     try {
                         VPackage p = PackageParserEx.parsePackage(parentDir);
-                        if (p != null && p.packageName != null) return p;
+                        if (p != null && p.packageName != null) {
+                            VLog.d(TAG, "Detection stage 1 succeeded for: " + p.packageName);
+                            return p;
+                        }
                     } catch (Throwable ignored) {}
+                    diagStage[0] = "S1:SplitDetect-ParseFailed";
                 }
             }
         }
 
         // Stage 2: Resolve package name via getPackageArchiveInfo (works when APK is readable)
+        diagStage[0] = "S2:ArchiveInfo";
         String detectedPkg = null;
         try {
             android.content.pm.PackageInfo ai = pm.getPackageArchiveInfo(path, 0);
@@ -675,11 +685,13 @@ public class VAppManagerService implements IAppManager {
                 VLog.d(TAG, "Detection stage 2 succeeded for: " + detectedPkg);
             }
         } catch (Throwable ignored) {}
+        if (detectedPkg == null) diagStage[0] = "S2:ArchiveInfo-Null";
 
         // Stage 2.5: Scan ALL installed packages and match by APK source path.
         // This is the most reliable method — no hidden APIs, no path format assumptions,
         // works on Android 10 through 16+. Requires QUERY_ALL_PACKAGES (already declared).
         if (detectedPkg == null) {
+            diagStage[0] = "S2.5:PkgScan";
             try {
                 java.util.List<android.content.pm.PackageInfo> all =
                         pm.getInstalledPackages(0);
@@ -707,6 +719,7 @@ public class VAppManagerService implements IAppManager {
                     }
                 }
             } catch (Throwable ignored) {}
+            if (detectedPkg == null) diagStage[0] = "S2.5:PkgScan-NoMatch";
         }
 
         // Stage 3: Extract package name from Android 10+ directory naming convention.
@@ -714,6 +727,7 @@ public class VAppManagerService implements IAppManager {
         // Use indexOf (not lastIndexOf): package names never contain dashes, so the FIRST
         // dash is always the separator; the Base64 hash CAN contain additional dashes.
         if (detectedPkg == null && parentDir != null) {
+            diagStage[0] = "S3:DirParse";
             String dirName = parentDir.getName();
             int dashIdx = dirName.indexOf('-');
             if (dashIdx > 0) {
@@ -727,19 +741,23 @@ public class VAppManagerService implements IAppManager {
                     } catch (Throwable ignored) {}
                 }
             }
+            if (detectedPkg == null) diagStage[0] = "S3:DirParse-NoMatch";
         }
 
         if (detectedPkg == null) {
+            diagStage[0] = "AllDetect:NoPkgFound";
             VLog.w(TAG, "tryFallbackParse: all detection stages failed for path=" + path);
             return null;
         }
 
         // Stage 4: Try PackageParser on the system APK directory (works on Android < 14)
+        diagStage[0] = "S4:PackageParser";
         android.content.pm.ApplicationInfo sysAi = null;
         try {
             sysAi = pm.getApplicationInfo(detectedPkg, 0);
         } catch (Throwable e) {
             VLog.w(TAG, "tryFallbackParse: getApplicationInfo failed for " + detectedPkg);
+            diagStage[0] = "S4:GetAppInfo-Failed";
         }
 
         if (sysAi != null) {
@@ -750,6 +768,7 @@ public class VAppManagerService implements IAppManager {
 
             File sysDir = new File(sysAi.sourceDir).getParentFile();
             if (sysDir != null && sysDir.isDirectory()) {
+                diagStage[0] = "S4:SysDir-Parsing";
                 try {
                     VPackage p = PackageParserEx.parsePackage(sysDir);
                     if (p != null && p.packageName != null) {
@@ -757,13 +776,16 @@ public class VAppManagerService implements IAppManager {
                         VLog.d(TAG, "Detection stage 4 succeeded for: " + p.packageName);
                         return p;
                     }
+                    diagStage[0] = "S4:SysDir-NullPkg";
                 } catch (Throwable e) {
+                    diagStage[0] = "S4:SysDir-Err(" + e.getClass().getSimpleName() + ")";
                     VLog.w(TAG, "tryFallbackParse: Stage4 sysDir failed: " + e.getMessage());
                 }
             }
 
             File sysBase = new File(sysAi.sourceDir);
             if (sysBase.exists() && !sysBase.getAbsolutePath().equals(path)) {
+                diagStage[0] = "S4:SysBase-Parsing";
                 try {
                     VPackage p = PackageParserEx.parsePackage(sysBase);
                     if (p != null && p.packageName != null) {
@@ -771,7 +793,9 @@ public class VAppManagerService implements IAppManager {
                         VLog.d(TAG, "Detection stage 4 succeeded for: " + p.packageName);
                         return p;
                     }
+                    diagStage[0] = "S4:SysBase-NullPkg";
                 } catch (Throwable e) {
+                    diagStage[0] = "S4:SysBase-Err(" + e.getClass().getSimpleName() + ")";
                     VLog.w(TAG, "tryFallbackParse: Stage4 sysBase failed: " + e.getMessage());
                 }
             }
@@ -779,10 +803,13 @@ public class VAppManagerService implements IAppManager {
 
         // Stage 5 (final): build full VPackage from public PackageManager APIs only.
         // No PackageParser, no hidden APIs — works on all Android versions.
+        diagStage[0] = "S5:BuildFromPM";
         VLog.w(TAG, "tryFallbackParse: Stage5 building from system PM for " + detectedPkg);
         VPackage stage5Result = buildMinimalVPackageFromSystemPM(detectedPkg, pm);
         if (stage5Result != null) {
             VLog.d(TAG, "Detection stage 5 succeeded for: " + detectedPkg);
+        } else {
+            diagStage[0] = "S5:BuildFromPM-Null";
         }
         return stage5Result;
     }

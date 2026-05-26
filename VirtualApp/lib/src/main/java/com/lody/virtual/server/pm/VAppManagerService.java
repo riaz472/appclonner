@@ -673,9 +673,12 @@ public class VAppManagerService implements IAppManager {
 
         // Stage 3: Extract package name from directory naming convention
         //          /data/app/com.example-XXXXXX==/base.apk  →  com.example
+        // Use indexOf (not lastIndexOf) because package names never contain dashes,
+        // so the FIRST dash is always the separator. URL-safe Base64 hashes CAN
+        // contain dashes, so lastIndexOf would pick the wrong position.
         if (detectedPkg == null && parentDir != null) {
             String dirName = parentDir.getName();
-            int dashIdx = dirName.lastIndexOf('-');
+            int dashIdx = dirName.indexOf('-');
             if (dashIdx > 0 && dirName.contains(".")) {
                 String candidate = dirName.substring(0, dashIdx);
                 if (candidate.contains(".")) {

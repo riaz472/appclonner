@@ -160,14 +160,66 @@ public class VAppManagerService implements IAppManager {
         VLog.d(TAG, "installPackage: parsing APK at path=" + path
                 + " size=" + packageFile.length() + " bytes");
         VPackage pkg = null;
+        File apkToInstall = packageFile;
+        boolean isSplitApk = false;
         try {
             pkg = PackageParserEx.parsePackage(packageFile);
         } catch (Throwable e) {
-            VLog.e(TAG, "installPackage FAILED: exception while parsing package at " + path, e);
-            e.printStackTrace();
+            VLog.w(TAG, "installPackage: initial parse failed, trying split APK fallback: " + e.getMessage());
+        }
+        // Split APK fallback (API 21+): modern apps (e.g. WhatsApp) ship as split APKs whose
+        // base.apk alone may fail VirtualApp's legacy PackageParser. Try the parent directory
+        // first (PackageParser on API 21+ accepts a directory of splits), then base.apk only.
+        if ((pkg == null || pkg.packageName == null) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            File parentDir = packageFile.getParentFile();
+            if (parentDir != null && parentDir.isDirectory()) {
+                File[] dirContents = parentDir.listFiles();
+                if (dirContents != null) {
+                    for (File f : dirContents) {
+                        if (f.getName().startsWith("split_") && f.getName().endsWith(".apk")) {
+                            isSplitApk = true;
+                            break;
+                        }
+                    }
+                }
+                if (isSplitApk) {
+                    VLog.w(TAG, "installPackage: split APK detected in " + parentDir
+                            + ", trying directory parse");
+                    // Attempt 1: parse the whole split APK directory
+                    try {
+                        pkg = PackageParserEx.parsePackage(parentDir);
+                        if (pkg != null && pkg.packageName != null) {
+                            VLog.d(TAG, "installPackage: split APK directory parse succeeded: "
+                                    + pkg.packageName);
+                        }
+                    } catch (Throwable e2) {
+                        VLog.w(TAG, "installPackage: directory parse failed: " + e2.getMessage());
+                    }
+                    // Attempt 2: base.apk only (skip splits)
+                    if (pkg == null || pkg.packageName == null) {
+                        File baseApk = new File(parentDir, "base.apk");
+                        if (baseApk.exists()
+                                && !baseApk.getAbsolutePath().equals(packageFile.getAbsolutePath())) {
+                            VLog.w(TAG, "installPackage: trying base.apk only: " + baseApk);
+                            try {
+                                pkg = PackageParserEx.parsePackage(baseApk);
+                                if (pkg != null && pkg.packageName != null) {
+                                    apkToInstall = baseApk;
+                                    VLog.d(TAG, "installPackage: base.apk parse succeeded: "
+                                            + pkg.packageName);
+                                }
+                            } catch (Throwable e3) {
+                                VLog.w(TAG, "installPackage: base.apk parse also failed: "
+                                        + e3.getMessage());
+                            }
+                        }
+                    }
+                }
+            }
         }
         if (pkg == null || pkg.packageName == null) {
-            VLog.e(TAG, "installPackage FAILED: parsePackage returned null for path=" + path);
+            VLog.e(TAG, "installPackage FAILED: unable to parse package at " + path
+                    + " (tried single APK and split APK fallback). isSplitApk=" + isSplitApk);
             return InstallResult.makeFailure("Unable to parse the package.");
         }
         InstallResult res = new InstallResult();
@@ -203,11 +255,20 @@ public class VAppManagerService implements IAppManager {
             dependSystem = false;
         }
 
+        // Split APKs cannot be copied and run as a single base.apk by VirtualApp's engine.
+        // Force dependSystem so we reuse the system-installed version instead of copying.
+        if (isSplitApk && !dependSystem && VirtualCore.get().isOutsideInstalled(pkg.packageName)) {
+            VLog.w(TAG, "installPackage: split APK detected, forcing dependSystem=true for "
+                    + pkg.packageName + " (base APK only fallback)");
+            dependSystem = true;
+        }
+
         VLog.d(TAG, "installPackage: pkg=" + pkg.packageName
                 + " dependSystem=" + dependSystem
+                + " isSplitApk=" + isSplitApk
                 + " appDir=" + appDir.getAbsolutePath());
 
-        int nativeCopyResult = NativeLibraryHelperCompat.copyNativeBinaries(new File(path), libDir);
+        int nativeCopyResult = NativeLibraryHelperCompat.copyNativeBinaries(apkToInstall, libDir);
         VLog.d(TAG, "installPackage: copyNativeBinaries result=" + nativeCopyResult + " for " + pkg.packageName);
 
         if (!dependSystem) {
@@ -220,7 +281,7 @@ public class VAppManagerService implements IAppManager {
             }
             VLog.d(TAG, "installPackage: copying APK to " + privatePackageFile.getAbsolutePath());
             try {
-                FileUtils.copyFile(packageFile, privatePackageFile);
+                FileUtils.copyFile(apkToInstall, privatePackageFile);
             } catch (IOException e) {
                 VLog.e(TAG, "installPackage FAILED: IOException copying APK from " + path
                         + " to " + privatePackageFile.getAbsolutePath()
@@ -318,6 +379,9 @@ public class VAppManagerService implements IAppManager {
     }
 
     private boolean canUpdate(VPackage existOne, VPackage newOne, int flags) {
+        if ((flags & InstallStrategy.INSTALL_ALLOW_DOWNGRADE) != 0) {
+            return true;
+        }
         if ((flags & InstallStrategy.COMPARE_VERSION) != 0) {
             if (existOne.mVersionCode < newOne.mVersionCode) {
                 return true;

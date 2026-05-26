@@ -6,10 +6,11 @@ package com.lody.virtual.client.core;
  *
  */
 public interface InstallStrategy {
-	int TERMINATE_IF_EXIST = 0x01 << 1;
-	int UPDATE_IF_EXIST = 0x01 << 2;
-	int COMPARE_VERSION = 0X01 << 3;
-	int IGNORE_NEW_VERSION = 0x01 << 4;
-	int DEPEND_SYSTEM_IF_EXIST = 0x01 << 5;
-	int SKIP_DEX_OPT = 0x01 << 6;
+        int TERMINATE_IF_EXIST = 0x01 << 1;
+        int UPDATE_IF_EXIST = 0x01 << 2;
+        int COMPARE_VERSION = 0X01 << 3;
+        int IGNORE_NEW_VERSION = 0x01 << 4;
+        int DEPEND_SYSTEM_IF_EXIST = 0x01 << 5;
+        int SKIP_DEX_OPT = 0x01 << 6;
+        int INSTALL_ALLOW_DOWNGRADE = 0x01 << 7;
 }

@@ -3,9 +3,12 @@ package io.virtualapp.home;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.RemoteException;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.lody.virtual.client.core.VirtualCore;
 import com.lody.virtual.client.ipc.VActivityManager;
@@ -40,6 +43,14 @@ public class LoadingActivity extends VActivity {
             loadingPageIntent.putExtra(KEY_INTENT, intent);
             loadingPageIntent.putExtra(KEY_USER, userId);
             context.startActivity(loadingPageIntent);
+        } else {
+            new Handler(Looper.getMainLooper()).post(() ->
+                Toast.makeText(
+                    context,
+                    "Launch failed: No Launcher Activity found [Check Manifest]",
+                    Toast.LENGTH_LONG
+                ).show()
+            );
         }
     }
 

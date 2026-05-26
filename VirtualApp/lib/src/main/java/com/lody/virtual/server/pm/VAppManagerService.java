@@ -842,12 +842,39 @@ public class VAppManagerService implements IAppManager {
                 if (sysInfo != null) break;
             } catch (Throwable ignored) {}
         }
-        if (sysInfo == null) {
-            VLog.e(TAG, "buildMinimalVPackageFromSystemPM: getPackageInfo returned null for " + packageName);
-            return null;
-        }
 
         VPackage pkg = new VPackage();
+        pkg.packageName = packageName;
+
+        if (sysInfo == null) {
+            VLog.w(TAG, "buildMinimalVPackageFromSystemPM: getPackageInfo failed for " + packageName
+                    + ", trying getApplicationInfo fallback");
+            try {
+                android.content.pm.ApplicationInfo fallbackAi = pm.getApplicationInfo(packageName, 0);
+                if (fallbackAi != null) {
+                    pkg.applicationInfo = fallbackAi;
+                    VLog.w(TAG, "buildMinimalVPackageFromSystemPM: built bare-minimum pkg from ApplicationInfo for " + packageName);
+                } else {
+                    VLog.w(TAG, "buildMinimalVPackageFromSystemPM: ApplicationInfo also null for " + packageName
+                            + ", returning bare-minimum pkg");
+                }
+            } catch (Throwable e) {
+                VLog.w(TAG, "buildMinimalVPackageFromSystemPM: ApplicationInfo fallback also failed for " + packageName
+                        + ", returning bare-minimum pkg");
+            }
+            pkg.activities       = new ArrayList<>();
+            pkg.receivers        = new ArrayList<>();
+            pkg.services         = new ArrayList<>();
+            pkg.providers        = new ArrayList<>();
+            pkg.permissions      = new ArrayList<>();
+            pkg.permissionGroups = new ArrayList<>();
+            pkg.instrumentation  = new ArrayList<>();
+            pkg.protectedBroadcasts  = new ArrayList<>();
+            pkg.requestedPermissions = new ArrayList<>();
+            VLog.d(TAG, "buildMinimalVPackageFromSystemPM bare-minimum OK: " + pkg.packageName);
+            return pkg;
+        }
+
         try {
             pkg.packageName  = sysInfo.packageName != null ? sysInfo.packageName : packageName;
             pkg.mVersionCode = sysInfo.versionCode;

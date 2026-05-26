@@ -1074,9 +1074,27 @@ class MethodProxies {
             if (isAppProcess()) {
                 packageInfos = new ArrayList<>(VirtualCore.get().getInstalledAppCount());
             } else {
-                packageInfos = VirtualCore.get().getUnHookPackageManager().getInstalledPackages(flags);
+                // On Android 11+ (QUERY_ALL_PACKAGES) or 14+ the real PM can throw
+                // SecurityException if the permission is denied at runtime.  Catch
+                // all Throwables here so the engine keeps running and returns at
+                // least the virtual apps that are installed inside VA.
+                try {
+                    packageInfos = VirtualCore.get().getUnHookPackageManager().getInstalledPackages(flags);
+                    if (packageInfos == null) {
+                        packageInfos = new ArrayList<>();
+                    }
+                } catch (Throwable e) {
+                    android.util.Log.w("GetInstalledPackages",
+                            "getInstalledPackages from host PM failed: " + e.getMessage());
+                    packageInfos = new ArrayList<>();
+                }
             }
-            packageInfos.addAll(VPackageManager.get().getInstalledPackages(flags, userId));
+            try {
+                packageInfos.addAll(VPackageManager.get().getInstalledPackages(flags, userId));
+            } catch (Throwable e) {
+                android.util.Log.w("GetInstalledPackages",
+                        "getInstalledPackages from VPM failed: " + e.getMessage());
+            }
             if (ParceledListSliceCompat.isReturnParceledListSlice(method)) {
                 return ParceledListSliceCompat.create(packageInfos);
             } else {

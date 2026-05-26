@@ -36,12 +36,19 @@ public class ServiceManagerNative {
     private static IServiceFetcher getServiceFetcher() {
         if (sFetcher == null || !sFetcher.asBinder().isBinderAlive()) {
             synchronized (ServiceManagerNative.class) {
+                // Double-check inside lock in case another thread already refreshed it.
+                if (sFetcher != null && sFetcher.asBinder().isBinderAlive()) {
+                    return sFetcher;
+                }
+                sFetcher = null;
                 Context context = VirtualCore.get().getContext();
                 Bundle response = new ProviderCall.Builder(context, SERVICE_CP_AUTH).methodName("@").call();
                 if (response != null) {
                     IBinder binder = BundleCompat.getBinder(response, "_VA_|_binder_");
-                    linkBinderDied(binder);
-                    sFetcher = IServiceFetcher.Stub.asInterface(binder);
+                    if (binder != null) {
+                        linkBinderDied(binder);
+                        sFetcher = IServiceFetcher.Stub.asInterface(binder);
+                    }
                 }
             }
         }
@@ -53,7 +60,9 @@ public class ServiceManagerNative {
     }
 
     public static void clearServerFetcher() {
-        sFetcher = null;
+        synchronized (ServiceManagerNative.class) {
+            sFetcher = null;
+        }
     }
 
     private static void linkBinderDied(final IBinder binder) {
@@ -61,6 +70,14 @@ public class ServiceManagerNative {
             @Override
             public void binderDied() {
                 binder.unlinkToDeath(this, 0);
+                // Null out the cached fetcher so the next IPC call re-fetches
+                // a fresh binder from the server process once it restarts.
+                synchronized (ServiceManagerNative.class) {
+                    if (sFetcher != null && sFetcher.asBinder() == binder) {
+                        sFetcher = null;
+                        VLog.w(TAG, "Server binder died — fetcher cleared, will reconnect on next call.");
+                    }
+                }
             }
         };
         try {
@@ -79,7 +96,10 @@ public class ServiceManagerNative {
             try {
                 return fetcher.getService(name);
             } catch (RemoteException e) {
-                e.printStackTrace();
+                // Server died between getServiceFetcher() and getService(); clear
+                // the stale fetcher so the next call triggers a reconnect.
+                clearServerFetcher();
+                VLog.e(TAG, "getService(%s) threw RemoteException — fetcher cleared: %s", name, e.getMessage());
             }
         }
         VLog.e(TAG, "GetService(%s) return null.", name);
@@ -92,10 +112,10 @@ public class ServiceManagerNative {
             try {
                 fetcher.addService(name, service);
             } catch (RemoteException e) {
+                clearServerFetcher();
                 e.printStackTrace();
             }
         }
-
     }
 
     public static void removeService(String name) {
@@ -104,9 +124,9 @@ public class ServiceManagerNative {
             try {
                 fetcher.removeService(name);
             } catch (RemoteException e) {
+                clearServerFetcher();
                 e.printStackTrace();
             }
         }
     }
-
 }

@@ -64,7 +64,13 @@ public class VPackageManager {
             // noinspection unchecked
             return getService().getInstalledApplications(flags, userId).getList();
         } catch (RemoteException e) {
-            return VirtualRuntime.crash(e);
+            // Server died or binder transaction failed — return empty list rather
+            // than killing the calling process via VirtualRuntime.crash().
+            e.printStackTrace();
+            return new java.util.ArrayList<>();
+        } catch (Throwable e) {
+            e.printStackTrace();
+            return new java.util.ArrayList<>();
         }
     }
 
@@ -104,7 +110,12 @@ public class VPackageManager {
         try {
             return getService().getInstalledPackages(flags, userId).getList();
         } catch (RemoteException e) {
-            return VirtualRuntime.crash(e);
+            // Server died — return empty list rather than crashing.
+            e.printStackTrace();
+            return new java.util.ArrayList<>();
+        } catch (Throwable e) {
+            e.printStackTrace();
+            return new java.util.ArrayList<>();
         }
     }
 

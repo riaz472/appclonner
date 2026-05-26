@@ -9,6 +9,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.RemoteException;
+import android.util.Log;
 
 import com.lody.virtual.client.core.VirtualCore;
 import com.lody.virtual.client.stub.DaemonService;
@@ -41,37 +42,119 @@ import mirror.android.app.job.IJobScheduler;
 
 /**
  * @author Lody
+ *
+ * Server-process ContentProvider that bootstraps all VA services.
+ * Each service registration is wrapped independently so a crash in one
+ * subsystem does not prevent the others from initialising.
  */
 public final class BinderProvider extends ContentProvider {
+
+    private static final String TAG = "BinderProvider";
 
     private final ServiceFetcher mServiceFetcher = new ServiceFetcher();
 
     @Override
     public boolean onCreate() {
         Context context = getContext();
-        DaemonService.startup(context);
+
+        // DaemonService keeps this process alive; failure is non-fatal.
+        try {
+            DaemonService.startup(context);
+        } catch (Throwable e) {
+            Log.w(TAG, "DaemonService.startup failed: " + e);
+        }
+
         if (!VirtualCore.get().isStartup()) {
             return true;
         }
-        VPackageManagerService.systemReady();
-        IPCBus.register(IPackageManager.class, VPackageManagerService.get());
-        VActivityManagerService.systemReady(context);
-        IPCBus.register(IActivityManager.class, VActivityManagerService.get());
-        IPCBus.register(IUserManager.class, VUserManagerService.get());
-        VAppManagerService.systemReady();
-        IPCBus.register(IAppManager.class, VAppManagerService.get());
-        BroadcastSystem.attach(VActivityManagerService.get(), VAppManagerService.get());
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            IPCBus.register(IJobService.class, VJobSchedulerService.get());
+
+        // ---- Package manager ----
+        try {
+            VPackageManagerService.systemReady();
+            IPCBus.register(IPackageManager.class, VPackageManagerService.get());
+        } catch (Throwable e) {
+            Log.e(TAG, "VPackageManagerService init failed: " + e, e);
         }
-        VNotificationManagerService.systemReady(context);
-        IPCBus.register(INotificationManager.class, VNotificationManagerService.get());
-        VAppManagerService.get().scanApps();
-        VAccountManagerService.systemReady();
-        IPCBus.register(IAccountManager.class, VAccountManagerService.get());
-        IPCBus.register(IVirtualStorageService.class, VirtualStorageService.get());
-        IPCBus.register(IDeviceInfoManager.class, VDeviceManagerService.get());
-        IPCBus.register(IVirtualLocationManager.class, VirtualLocationService.get());
+
+        // ---- Activity manager ----
+        try {
+            VActivityManagerService.systemReady(context);
+            IPCBus.register(IActivityManager.class, VActivityManagerService.get());
+        } catch (Throwable e) {
+            Log.e(TAG, "VActivityManagerService init failed: " + e, e);
+        }
+
+        // ---- User manager ----
+        try {
+            IPCBus.register(IUserManager.class, VUserManagerService.get());
+        } catch (Throwable e) {
+            Log.e(TAG, "VUserManagerService init failed: " + e, e);
+        }
+
+        // ---- App manager + scan ----
+        try {
+            VAppManagerService.systemReady();
+            IPCBus.register(IAppManager.class, VAppManagerService.get());
+        } catch (Throwable e) {
+            Log.e(TAG, "VAppManagerService init failed: " + e, e);
+        }
+
+        // ---- Broadcast system ----
+        try {
+            BroadcastSystem.attach(VActivityManagerService.get(), VAppManagerService.get());
+        } catch (Throwable e) {
+            Log.e(TAG, "BroadcastSystem.attach failed: " + e, e);
+        }
+
+        // ---- Job scheduler (API 21+) ----
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                IPCBus.register(IJobService.class, VJobSchedulerService.get());
+            } catch (Throwable e) {
+                Log.e(TAG, "VJobSchedulerService init failed: " + e, e);
+            }
+        }
+
+        // ---- Notification manager ----
+        try {
+            VNotificationManagerService.systemReady(context);
+            IPCBus.register(INotificationManager.class, VNotificationManagerService.get());
+        } catch (Throwable e) {
+            Log.e(TAG, "VNotificationManagerService init failed: " + e, e);
+        }
+
+        // ---- Scan installed virtual apps ----
+        try {
+            VAppManagerService.get().scanApps();
+        } catch (Throwable e) {
+            Log.e(TAG, "VAppManagerService.scanApps failed: " + e, e);
+        }
+
+        // ---- Account manager ----
+        try {
+            VAccountManagerService.systemReady();
+            IPCBus.register(IAccountManager.class, VAccountManagerService.get());
+        } catch (Throwable e) {
+            Log.e(TAG, "VAccountManagerService init failed: " + e, e);
+        }
+
+        // ---- Storage / Device / Location managers ----
+        try {
+            IPCBus.register(IVirtualStorageService.class, VirtualStorageService.get());
+        } catch (Throwable e) {
+            Log.e(TAG, "VirtualStorageService init failed: " + e, e);
+        }
+        try {
+            IPCBus.register(IDeviceInfoManager.class, VDeviceManagerService.get());
+        } catch (Throwable e) {
+            Log.e(TAG, "VDeviceManagerService init failed: " + e, e);
+        }
+        try {
+            IPCBus.register(IVirtualLocationManager.class, VirtualLocationService.get());
+        } catch (Throwable e) {
+            Log.e(TAG, "VirtualLocationService init failed: " + e, e);
+        }
+
         return true;
     }
 

@@ -1,8 +1,8 @@
 workflows:
   android-apk-build:
     name: Android APK Build
-    max_build_duration: 30
-    instance_type: mac_mini_m1
+    max_build_duration: 60
+    instance_type: linux_x86_64
     environment:
       java: 17
     triggering:
@@ -13,9 +13,19 @@ workflows:
           include: true
           source: true
     scripts:
+      - name: Install NDK r16b
+        script: |
+          NDK_DIR="$HOME/android-ndk-r16b"
+          if [ ! -d "$NDK_DIR" ]; then
+            wget -q https://dl.google.com/android/repository/android-ndk-r16b-linux-x86_64.zip -O /tmp/ndk.zip
+            unzip -q /tmp/ndk.zip -d "$HOME"
+            rm /tmp/ndk.zip
+          fi
+          echo "NDK_DIR=$NDK_DIR" >> $CM_ENV
       - name: Set up local.properties
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > ./VirtualApp/local.properties
+          echo "ndk.dir=$NDK_DIR" >> ./VirtualApp/local.properties
       - name: Build Android APK
         script: |
           cd ./VirtualApp

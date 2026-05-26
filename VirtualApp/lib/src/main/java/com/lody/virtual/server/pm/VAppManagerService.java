@@ -2,6 +2,7 @@ package com.lody.virtual.server.pm;
 
 import android.os.Parcel;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Build;
 import android.os.IBinder;
@@ -871,6 +872,7 @@ public class VAppManagerService implements IAppManager {
             pkg.instrumentation  = new ArrayList<>();
             pkg.protectedBroadcasts  = new ArrayList<>();
             pkg.requestedPermissions = new ArrayList<>();
+            injectLauncherIntentFilter(pkg, packageName, pm);
             VLog.d(TAG, "buildMinimalVPackageFromSystemPM bare-minimum OK: " + pkg.packageName);
             return pkg;
         }
@@ -959,12 +961,102 @@ public class VAppManagerService implements IAppManager {
             VLog.w(TAG, "buildMinimalVPackageFromSystemPM: could not read providers for " + packageName);
         }
 
+        injectLauncherIntentFilter(pkg, packageName, pm);
         VLog.d(TAG, "buildMinimalVPackageFromSystemPM OK: " + pkg.packageName
                 + " acts=" + pkg.activities.size()
                 + " svcs=" + pkg.services.size()
                 + " rcvs=" + pkg.receivers.size()
                 + " prvs=" + pkg.providers.size());
         return pkg;
+    }
+
+    private static void injectLauncherIntentFilter(
+            VPackage pkg,
+            String packageName,
+            android.content.pm.PackageManager pm) {
+        try {
+            for (VPackage.ActivityComponent act : pkg.activities) {
+                if (act.intents != null) {
+                    for (VPackage.ActivityIntentInfo ii : act.intents) {
+                        if (ii.filter != null
+                                && ii.filter.hasAction(Intent.ACTION_MAIN)
+                                && ii.filter.hasCategory(Intent.CATEGORY_LAUNCHER)) {
+                            return;
+                        }
+                    }
+                }
+            }
+
+            Intent launcherQuery = new Intent(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_LAUNCHER)
+                    .setPackage(packageName);
+            List<android.content.pm.ResolveInfo> ris = pm.queryIntentActivities(launcherQuery, 0);
+            if (ris == null || ris.isEmpty()) {
+                VLog.w(TAG, "injectLauncherIntentFilter: system PM found no launcher for " + packageName);
+                return;
+            }
+            android.content.pm.ActivityInfo launcherAi = ris.get(0).activityInfo;
+            if (launcherAi == null) return;
+
+            VPackage.ActivityComponent target = null;
+            for (VPackage.ActivityComponent act : pkg.activities) {
+                if (launcherAi.name.equals(act.className)) {
+                    target = act;
+                    break;
+                }
+            }
+            if (target == null) {
+                target = buildActivityComponent(launcherAi);
+                if (target == null) return;
+                target.owner = pkg;
+                pkg.activities.add(target);
+            }
+            if (target.intents == null) {
+                target.intents = new ArrayList<>();
+            }
+
+            IntentFilter filter = new IntentFilter(Intent.ACTION_MAIN);
+            filter.addCategory(Intent.CATEGORY_LAUNCHER);
+
+            VPackage.ActivityIntentInfo ii = null;
+            if (sUnsafe != null && sAllocateInstance != null) {
+                try {
+                    ii = (VPackage.ActivityIntentInfo)
+                            sAllocateInstance.invoke(sUnsafe, VPackage.ActivityIntentInfo.class);
+                } catch (Throwable ignored) {}
+            }
+            if (ii == null) {
+                try {
+                    Parcel p = Parcel.obtain();
+                    try {
+                        p.writeParcelable(filter, 0);
+                        p.writeByte((byte) 1);
+                        p.writeInt(0);
+                        p.writeString(null);
+                        p.writeInt(0);
+                        p.writeInt(0);
+                        p.writeInt(0);
+                        p.setDataPosition(0);
+                        java.lang.reflect.Constructor<VPackage.ActivityIntentInfo> ctor =
+                                VPackage.ActivityIntentInfo.class.getDeclaredConstructor(Parcel.class);
+                        ctor.setAccessible(true);
+                        ii = ctor.newInstance(p);
+                    } finally {
+                        p.recycle();
+                    }
+                } catch (Throwable ignored) {}
+            }
+            if (ii == null) return;
+
+            ii.filter    = filter;
+            ii.hasDefault = true;
+            ii.activity   = target;
+            target.intents.add(ii);
+            VLog.d(TAG, "injectLauncherIntentFilter: injected launcher intent for "
+                    + packageName + " -> " + launcherAi.name);
+        } catch (Throwable e) {
+            VLog.w(TAG, "injectLauncherIntentFilter failed for " + packageName, e);
+        }
     }
 
     // Component builders: allocate instances without calling any constructor, then set

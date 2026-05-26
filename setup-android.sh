@@ -90,7 +90,16 @@ echo ">>> [3/4] Installing SDK Platform 28 and Build-Tools 28.0.3..."
 echo "    Done."
 
 # ─── 5. Download and install NDK r16b ────────────────────────────────────────
-if [ ! -d "$NDK_INSTALL_DIR" ]; then
+# Check for complete installation: the build/ subdirectory must exist
+NDK_COMPLETE=false
+if [ -d "$NDK_INSTALL_DIR/build" ]; then
+    NDK_COMPLETE=true
+fi
+
+if [ "$NDK_COMPLETE" = false ]; then
+    # Remove any incomplete extraction
+    rm -rf "$NDK_INSTALL_DIR"
+
     # NDK r16b full size is ~822MB; use -c to resume partial downloads
     NDK_FULL_SIZE=861630238  # bytes
     EXISTING_SIZE=0
@@ -106,8 +115,12 @@ if [ ! -d "$NDK_INSTALL_DIR" ]; then
     fi
 
     echo ">>> Extracting NDK r16b (this takes ~2 minutes)..."
-    unzip -q "$TMP_NDK" -d "$ANDROID_HOME/ndk"
-    mv "$ANDROID_HOME/ndk/android-ndk-r16b" "$NDK_INSTALL_DIR"
+    EXTRACT_DIR="$(dirname "$NDK_INSTALL_DIR")/ndk-extract-tmp"
+    rm -rf "$EXTRACT_DIR"
+    mkdir -p "$EXTRACT_DIR"
+    unzip -q "$TMP_NDK" -d "$EXTRACT_DIR"
+    mv "$EXTRACT_DIR/android-ndk-r16b" "$NDK_INSTALL_DIR"
+    rm -rf "$EXTRACT_DIR"
     rm -f "$TMP_NDK"
     echo "    Done."
 else

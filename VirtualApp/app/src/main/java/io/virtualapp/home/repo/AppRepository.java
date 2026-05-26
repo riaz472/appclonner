@@ -153,7 +153,21 @@ public class AppRepository implements AppDataSource {
         if (info.fastOpen) {
             flags |= InstallStrategy.DEPEND_SYSTEM_IF_EXIST;
         }
-        return VirtualCore.get().installPackage(info.path, flags);
+        android.util.Log.d("VApp/Clone", "addVirtualApp: pkg=" + info.packageName
+                + " path=" + info.path
+                + " fastOpen=" + info.fastOpen
+                + " pathExists=" + (info.path != null && new java.io.File(info.path).exists())
+                + " pathReadable=" + (info.path != null && new java.io.File(info.path).canRead()));
+        InstallResult result = VirtualCore.get().installPackage(info.path, flags);
+        if (!result.isSuccess) {
+            android.util.Log.e("VApp/Clone", "addVirtualApp FAILED: pkg=" + info.packageName
+                    + " error=" + result.error
+                    + " path=" + info.path);
+        } else {
+            android.util.Log.d("VApp/Clone", "addVirtualApp SUCCESS: pkg=" + info.packageName
+                    + " isUpdate=" + result.isUpdate);
+        }
+        return result;
     }
 
     @Override

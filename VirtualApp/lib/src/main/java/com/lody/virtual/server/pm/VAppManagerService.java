@@ -146,19 +146,28 @@ public class VAppManagerService implements IAppManager {
     public synchronized InstallResult installPackage(String path, int flags, boolean notify) {
         long installTime = System.currentTimeMillis();
         if (path == null) {
+            VLog.e(TAG, "installPackage FAILED: path is null");
             return InstallResult.makeFailure("path = NULL");
         }
         File packageFile = new File(path);
         if (!packageFile.exists() || !packageFile.isFile()) {
+            VLog.e(TAG, "installPackage FAILED: package file does not exist or is not a file: " + path
+                    + " | exists=" + packageFile.exists()
+                    + " | isFile=" + packageFile.isFile()
+                    + " | canRead=" + packageFile.canRead());
             return InstallResult.makeFailure("Package File is not exist.");
         }
+        VLog.d(TAG, "installPackage: parsing APK at path=" + path
+                + " size=" + packageFile.length() + " bytes");
         VPackage pkg = null;
         try {
             pkg = PackageParserEx.parsePackage(packageFile);
         } catch (Throwable e) {
+            VLog.e(TAG, "installPackage FAILED: exception while parsing package at " + path, e);
             e.printStackTrace();
         }
         if (pkg == null || pkg.packageName == null) {
+            VLog.e(TAG, "installPackage FAILED: parsePackage returned null for path=" + path);
             return InstallResult.makeFailure("Unable to parse the package.");
         }
         InstallResult res = new InstallResult();
@@ -184,6 +193,7 @@ public class VAppManagerService implements IAppManager {
             VActivityManagerService.get().killAppByPkg(pkg.packageName, VUserHandle.USER_ALL);
         }
         if (!libDir.exists() && !libDir.mkdirs()) {
+            VLog.e(TAG, "installPackage FAILED: unable to create lib dir: " + libDir.getAbsolutePath());
             return InstallResult.makeFailure("Unable to create lib dir.");
         }
         boolean dependSystem = (flags & InstallStrategy.DEPEND_SYSTEM_IF_EXIST) != 0
@@ -193,7 +203,13 @@ public class VAppManagerService implements IAppManager {
             dependSystem = false;
         }
 
-        NativeLibraryHelperCompat.copyNativeBinaries(new File(path), libDir);
+        VLog.d(TAG, "installPackage: pkg=" + pkg.packageName
+                + " dependSystem=" + dependSystem
+                + " appDir=" + appDir.getAbsolutePath());
+
+        int nativeCopyResult = NativeLibraryHelperCompat.copyNativeBinaries(new File(path), libDir);
+        VLog.d(TAG, "installPackage: copyNativeBinaries result=" + nativeCopyResult + " for " + pkg.packageName);
+
         if (!dependSystem) {
             File privatePackageFile = new File(appDir, "base.apk");
             File parentFolder = privatePackageFile.getParentFile();
@@ -202,9 +218,13 @@ public class VAppManagerService implements IAppManager {
             } else if (privatePackageFile.exists() && !privatePackageFile.delete()) {
                 VLog.w(TAG, "Warning: unable to delete file : " + privatePackageFile.getPath());
             }
+            VLog.d(TAG, "installPackage: copying APK to " + privatePackageFile.getAbsolutePath());
             try {
                 FileUtils.copyFile(packageFile, privatePackageFile);
             } catch (IOException e) {
+                VLog.e(TAG, "installPackage FAILED: IOException copying APK from " + path
+                        + " to " + privatePackageFile.getAbsolutePath()
+                        + " | freeSpace=" + privatePackageFile.getParentFile().getFreeSpace() + " bytes", e);
                 privatePackageFile.delete();
                 return InstallResult.makeFailure("Unable to copy the package file.");
             }

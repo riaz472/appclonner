@@ -83,9 +83,12 @@ class HomePresenterImpl implements HomeContract.HomePresenter {
             private PackageAppData appData;
             private int userId;
             private boolean justEnableHidden;
+            private String failReason;
         }
         AddResult addResult = new AddResult();
         VUiKit.defer().when(() -> {
+            android.util.Log.d("VApp/Clone", "addApp: starting clone for pkg=" + info.packageName
+                    + " path=" + info.path + " fastOpen=" + info.fastOpen);
             InstalledAppInfo installedAppInfo = VirtualCore.get().getInstalledAppInfo(info.packageName, 0);
             addResult.justEnableHidden = installedAppInfo != null;
             if (addResult.justEnableHidden) {
@@ -108,19 +111,28 @@ class HomePresenterImpl implements HomeContract.HomePresenter {
                     String nextUserName = "Space " + (nextUserId + 1);
                     VUserInfo newUserInfo = VUserManager.get().createUser(nextUserName, VUserInfo.FLAG_ADMIN);
                     if (newUserInfo == null) {
-                        throw new IllegalStateException();
+                        addResult.failReason = "Failed to create user space for " + info.packageName;
+                        android.util.Log.e("VApp/Clone", "addApp FAILED: " + addResult.failReason);
+                        throw new IllegalStateException(addResult.failReason);
                     }
                 }
                 boolean success = VirtualCore.get().installPackageAsUser(nextUserId, info.packageName);
                 if (!success) {
-                    throw new IllegalStateException();
+                    addResult.failReason = "installPackageAsUser returned false for pkg=" + info.packageName
+                            + " userId=" + nextUserId;
+                    android.util.Log.e("VApp/Clone", "addApp FAILED: " + addResult.failReason);
+                    throw new IllegalStateException(addResult.failReason);
                 }
             } else {
                 InstallResult res = mRepo.addVirtualApp(info);
                 if (!res.isSuccess) {
-                    throw new IllegalStateException();
+                    addResult.failReason = "installPackage failed: " + res.error
+                            + " | pkg=" + info.packageName + " path=" + info.path;
+                    android.util.Log.e("VApp/Clone", "addApp FAILED: " + addResult.failReason);
+                    throw new IllegalStateException(addResult.failReason);
                 }
             }
+            android.util.Log.d("VApp/Clone", "addApp: install step succeeded for pkg=" + info.packageName);
         }).then((res) -> {
             addResult.appData = PackageAppDataStorage.get().acquire(info.packageName);
         }).done(res -> {
@@ -136,6 +148,14 @@ class HomePresenterImpl implements HomeContract.HomePresenter {
                 mView.addAppToLauncher(data);
                 handleOptApp(data, info.packageName, false);
             }
+        }).fail(err -> {
+            android.util.Log.e("VApp/Clone", "addApp deferred chain FAILED for pkg=" + info.packageName, err);
+            android.widget.Toast.makeText(
+                    mActivity,
+                    "Clone failed for " + info.packageName
+                            + (addResult.failReason != null ? "\n" + addResult.failReason : ""),
+                    android.widget.Toast.LENGTH_LONG
+            ).show();
         });
     }
 

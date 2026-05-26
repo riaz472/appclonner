@@ -160,8 +160,9 @@ public class VAppManagerService implements IAppManager {
                     + " | canRead=" + packageFile.canRead());
             return InstallResult.makeFailure("Package File is not exist.");
         }
-        VLog.d(TAG, "installPackage: parsing APK at path=" + path
-                + " size=" + packageFile.length() + " bytes");
+        VLog.d(TAG, "installPackage: APK path being parsed: " + path
+                + " | size=" + packageFile.length() + " bytes"
+                + " | canRead=" + packageFile.canRead());
         VPackage pkg = null;
         File apkToInstall = packageFile;
         boolean isSplitApk = false;
@@ -671,6 +672,7 @@ public class VAppManagerService implements IAppManager {
             if (ai != null && ai.packageName != null) {
                 detectedPkg = ai.packageName;
                 VLog.d(TAG, "tryFallbackParse: Stage2 archiveInfo pkg=" + detectedPkg);
+                VLog.d(TAG, "Detection stage 2 succeeded for: " + detectedPkg);
             }
         } catch (Throwable ignored) {}
 
@@ -689,6 +691,7 @@ public class VAppManagerService implements IAppManager {
                      || (psd != null && psd.equals(path))) {
                         detectedPkg = pi.packageName;
                         VLog.d(TAG, "tryFallbackParse: Stage2.5 pathScan pkg=" + detectedPkg);
+                        VLog.d(TAG, "Detection stage 2.5 succeeded for: " + detectedPkg);
                         break;
                     }
                     // Also match by parent directory (handles split-APK sub-paths)
@@ -698,6 +701,7 @@ public class VAppManagerService implements IAppManager {
                          || (psd != null && psd.startsWith(apkParent))) {
                             detectedPkg = pi.packageName;
                             VLog.d(TAG, "tryFallbackParse: Stage2.5 parentScan pkg=" + detectedPkg);
+                            VLog.d(TAG, "Detection stage 2.5 succeeded for: " + detectedPkg);
                             break;
                         }
                     }
@@ -719,6 +723,7 @@ public class VAppManagerService implements IAppManager {
                         pm.getApplicationInfo(candidate, 0);
                         detectedPkg = candidate;
                         VLog.d(TAG, "tryFallbackParse: Stage3 dirParse pkg=" + detectedPkg);
+                        VLog.d(TAG, "Detection stage 3 succeeded for: " + detectedPkg);
                     } catch (Throwable ignored) {}
                 }
             }
@@ -749,6 +754,7 @@ public class VAppManagerService implements IAppManager {
                     VPackage p = PackageParserEx.parsePackage(sysDir);
                     if (p != null && p.packageName != null) {
                         VLog.d(TAG, "tryFallbackParse: Stage4 sysDir succeeded: " + p.packageName);
+                        VLog.d(TAG, "Detection stage 4 succeeded for: " + p.packageName);
                         return p;
                     }
                 } catch (Throwable e) {
@@ -762,6 +768,7 @@ public class VAppManagerService implements IAppManager {
                     VPackage p = PackageParserEx.parsePackage(sysBase);
                     if (p != null && p.packageName != null) {
                         VLog.d(TAG, "tryFallbackParse: Stage4 sysBase succeeded: " + p.packageName);
+                        VLog.d(TAG, "Detection stage 4 succeeded for: " + p.packageName);
                         return p;
                     }
                 } catch (Throwable e) {
@@ -773,7 +780,11 @@ public class VAppManagerService implements IAppManager {
         // Stage 5 (final): build full VPackage from public PackageManager APIs only.
         // No PackageParser, no hidden APIs — works on all Android versions.
         VLog.w(TAG, "tryFallbackParse: Stage5 building from system PM for " + detectedPkg);
-        return buildMinimalVPackageFromSystemPM(detectedPkg, pm);
+        VPackage stage5Result = buildMinimalVPackageFromSystemPM(detectedPkg, pm);
+        if (stage5Result != null) {
+            VLog.d(TAG, "Detection stage 5 succeeded for: " + detectedPkg);
+        }
+        return stage5Result;
     }
 
     private VPackage buildMinimalVPackageFromSystemPM(String packageName,
